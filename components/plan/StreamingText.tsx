@@ -19,22 +19,19 @@ const LOADING_MESSAGES = [
   'プランに最後の仕上げをしています',
 ]
 
+// 想定する平均的なJSON文字数（進捗推定用）
+const ESTIMATED_TOTAL_CHARS = 2800
+
 export function StreamingText({ conditions, onComplete, onError }: StreamingTextProps) {
   const [messageIndex, setMessageIndex] = useState(0)
-  const [dots, setDots] = useState('')
+  const [progress, setProgress] = useState(0)
   const textRef = useRef('')
 
   useEffect(() => {
     const msgInterval = setInterval(() => {
       setMessageIndex((i) => (i + 1) % LOADING_MESSAGES.length)
     }, 2200)
-    const dotInterval = setInterval(() => {
-      setDots((d) => (d.length >= 3 ? '' : d + '.'))
-    }, 400)
-    return () => {
-      clearInterval(msgInterval)
-      clearInterval(dotInterval)
-    }
+    return () => clearInterval(msgInterval)
   }, [])
 
   useEffect(() => {
@@ -73,9 +70,11 @@ export function StreamingText({ conditions, onComplete, onError }: StreamingText
             const data = line.slice(6)
 
             if (data.trim() === '[DONE]') {
+              setProgress(100)
               try {
-                const plan = JSON.parse(textRef.current) as GeneratedPlan
-                onComplete(plan, textRef.current)
+                const raw = textRef.current.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+                const plan = JSON.parse(raw) as GeneratedPlan
+                onComplete(plan, raw)
               } catch (e) {
                 onError(`JSON解析失敗: ${e instanceof Error ? e.message : String(e)}`)
               }
@@ -85,9 +84,13 @@ export function StreamingText({ conditions, onComplete, onError }: StreamingText
             try {
               const parsed = JSON.parse(data)
               if (parsed.error) { onError(parsed.error, parsed.code); return }
-              if (parsed.text) { textRef.current += parsed.text }
+              if (parsed.text) {
+                textRef.current += parsed.text
+                const pct = Math.min(95, Math.round((textRef.current.length / ESTIMATED_TOTAL_CHARS) * 100))
+                setProgress(pct)
+              }
             } catch {
-              // SSEのパース失敗は無視して継続
+              // SSEのパース失敗は無視
             }
           }
         }
@@ -103,7 +106,6 @@ export function StreamingText({ conditions, onComplete, onError }: StreamingText
 
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-8">
-      {/* アイコン */}
       <div className="relative">
         <div
           className="w-24 h-24 rounded-full flex items-center justify-center bg-[#fff0f2]"
@@ -123,28 +125,26 @@ export function StreamingText({ conditions, onComplete, onError }: StreamingText
         </div>
       </div>
 
-      {/* メッセージ */}
-      <div className="space-y-2">
-        <p className="text-base font-bold text-[#222222]">
-          {LOADING_MESSAGES[messageIndex]}{dots}
-        </p>
+      <div className="space-y-1.5">
+        <p className="text-base font-bold text-[#222222]">{LOADING_MESSAGES[messageIndex]}</p>
         <p className="text-sm text-[#6a6a6a]">AIがあなただけのプランを作成中</p>
       </div>
 
-      {/* プログレスバー */}
-      <div className="w-52 h-1 bg-[#f2f2f2] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full bg-[#ff385c]"
-          style={{ animation: 'loading-bar 2s ease-in-out infinite' }}
-        />
+      {/* 進捗バー + パーセンテージ */}
+      <div className="w-52 space-y-2">
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-[#929292]">生成中</span>
+          <span className="font-bold text-[#ff385c]">{progress}%</span>
+        </div>
+        <div className="w-full h-1.5 bg-[#f2f2f2] rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full bg-[#ff385c] transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
       </div>
 
       <style>{`
-        @keyframes loading-bar {
-          0% { width: 0%; margin-left: 0%; }
-          50% { width: 70%; margin-left: 15%; }
-          100% { width: 0%; margin-left: 100%; }
-        }
         @keyframes pulse-soft {
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.04); opacity: 0.9; }

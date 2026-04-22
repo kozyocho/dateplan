@@ -1,8 +1,9 @@
 'use client'
 
-import { type GeneratedPlan } from '@/types'
+import { useState, useEffect } from 'react'
+import { type GeneratedPlan, type PlanSpot } from '@/types'
 import { Button } from '@/components/ui/button'
-import { Footprints, Train, Bus, Car, Bike, Ship, Plane, MapPin } from 'lucide-react'
+import { Footprints, Train, Bus, Car, Bike, Ship, Plane, MapPin, X, Clock, Banknote, ChevronRight } from 'lucide-react'
 
 function TransportIcon({ transport }: { transport: string }) {
   const cls = 'w-4 h-4 text-[#6a6a6a]'
@@ -30,6 +31,10 @@ function buildGoogleMapsUrl(origin: string, destination: string, transport: stri
   return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
+function buildSpotMapEmbedUrl(place: string): string {
+  return `https://maps.google.com/maps?q=${encodeURIComponent(place)}&output=embed&z=15`
+}
+
 const CATEGORY_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
   食事:           { bg: 'bg-orange-50', text: 'text-orange-600', icon: '✦' },
   カフェ:         { bg: 'bg-amber-50',  text: 'text-amber-600',  icon: '◈' },
@@ -38,6 +43,148 @@ const CATEGORY_STYLES: Record<string, { bg: string; text: string; icon: string }
   アクティビティ: { bg: 'bg-emerald-50',text: 'text-emerald-600',icon: '▲' },
   夜景:           { bg: 'bg-violet-50', text: 'text-violet-600', icon: '✧' },
   移動:           { bg: 'bg-[#f2f2f2]', text: 'text-[#6a6a6a]', icon: '→' },
+}
+
+type PlaceDetails = {
+  rating: number | null
+  ratingCount: number | null
+  photos: string[]
+  isOpen: boolean | null
+  website: string | null
+}
+
+function SpotDetailSheet({ spot, onClose }: { spot: PlanSpot; onClose: () => void }) {
+  const [details, setDetails] = useState<PlaceDetails | null>(null)
+  const style = CATEGORY_STYLES[spot.category] ?? { bg: 'bg-[#f2f2f2]', text: 'text-[#6a6a6a]', icon: '◎' }
+  const mapsSearchUrl = `https://www.google.com/maps/search/${encodeURIComponent(spot.place)}`
+
+  useEffect(() => {
+    fetch(`/api/places?query=${encodeURIComponent(spot.place)}`)
+      .then(r => r.json())
+      .then(d => setDetails(d.place ?? null))
+      .catch(() => {})
+  }, [spot.place])
+
+  const hasPhotos = details?.photos && details.photos.length > 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
+      {/* オーバーレイ */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* シート */}
+      <div
+        className="relative bg-white rounded-t-[20px] max-h-[85dvh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ドラッグハンドル */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-[#c1c1c1]/60" />
+        </div>
+
+        {/* 写真 or 地図 */}
+        <div className="relative w-full h-52 bg-[#f2f2f2] overflow-hidden">
+          {hasPhotos ? (
+            <div className="flex overflow-x-auto snap-x snap-mandatory h-full [&::-webkit-scrollbar]:hidden">
+              {details!.photos.map((url, i) => (
+                <div key={i} className="snap-center shrink-0 w-full h-full">
+                  <img src={url} alt={spot.place} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <iframe
+              src={buildSpotMapEmbedUrl(spot.place)}
+              className="w-full h-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          )}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center"
+          >
+            <X className="w-4 h-4 text-[#222222]" />
+          </button>
+          {hasPhotos && details!.photos.length > 1 && (
+            <div className="absolute bottom-2 right-3 bg-black/50 text-white text-[11px] px-2 py-0.5 rounded-full">
+              {details!.photos.length}枚
+            </div>
+          )}
+        </div>
+
+        {/* コンテンツ */}
+        <div className="px-5 py-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
+                  {style.icon} {spot.category}
+                </span>
+                <span className="text-xs font-bold text-[#ff385c]">{spot.time}</span>
+              </div>
+              <h3 className="text-lg font-bold text-[#222222] leading-snug">{spot.place}</h3>
+              {details?.rating && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-amber-400 text-sm leading-none">★</span>
+                  <span className="text-sm font-medium text-[#222222]">{details.rating.toFixed(1)}</span>
+                  {details.ratingCount && (
+                    <span className="text-xs text-[#929292]">({details.ratingCount.toLocaleString()}件)</span>
+                  )}
+                  {details.isOpen !== null && (
+                    <span className={`text-xs font-medium ${details.isOpen ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {details.isOpen ? '営業中' : '営業時間外'}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <span className="text-base font-bold text-[#ff385c] whitespace-nowrap shrink-0">
+              ¥{spot.estimated_cost.toLocaleString()}
+            </span>
+          </div>
+
+          <p className="text-sm text-[#6a6a6a] leading-relaxed">{spot.description}</p>
+
+          <div className="flex gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-[#929292]">
+              <Clock className="w-3.5 h-3.5" />
+              {spot.duration}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-[#929292]">
+              <Banknote className="w-3.5 h-3.5" />
+              目安 ¥{spot.estimated_cost.toLocaleString()}
+            </div>
+          </div>
+
+          <a
+            href={mapsSearchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between w-full px-4 py-3 rounded-[10px] border border-[#c1c1c1]/40 hover:bg-[#f2f2f2] transition-colors"
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-[#222222]">
+              <MapPin className="w-4 h-4 text-[#ff385c]" />
+              Google マップで開く
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#929292]" />
+          </a>
+
+          {details?.website && (
+            <a
+              href={details.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between w-full px-4 py-3 rounded-[10px] border border-[#c1c1c1]/40 hover:bg-[#f2f2f2] transition-colors"
+            >
+              <span className="text-sm font-medium text-[#222222]">公式サイト</span>
+              <ChevronRight className="w-4 h-4 text-[#929292]" />
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 interface PlanTimelineProps {
@@ -51,6 +198,8 @@ interface PlanTimelineProps {
 }
 
 export function PlanTimeline({ plan, onSave, onRegenerate, onRainConvert, onReplaceSpot, replacingIndex, isSaving }: PlanTimelineProps) {
+  const [selectedSpot, setSelectedSpot] = useState<PlanSpot | null>(null)
+
   return (
     <div className="space-y-6">
       {/* ヘッダー */}
@@ -73,7 +222,10 @@ export function PlanTimeline({ plan, onSave, onRegenerate, onRainConvert, onRepl
             <div key={index}>
               <div className="relative pl-6">
                 <div className="absolute left-[5px] top-3 w-2 h-2 rounded-full border-2 border-[#ff385c] bg-white z-10" />
-                <div className={`bg-white rounded-[14px] border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden ${replacingIndex === index ? 'border-[#c1c1c1] opacity-60' : 'border-[#c1c1c1]/40 hover:border-[#c1c1c1]'}`}>
+                <div
+                  className={`bg-white rounded-[14px] border shadow-sm transition-all duration-200 overflow-hidden cursor-pointer active:scale-[0.98] ${replacingIndex === index ? 'border-[#c1c1c1] opacity-60' : 'border-[#c1c1c1]/40 hover:border-[#c1c1c1] hover:shadow-md'}`}
+                  onClick={() => setSelectedSpot(spot)}
+                >
                   <div className="px-5 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
@@ -85,15 +237,16 @@ export function PlanTimeline({ plan, onSave, onRegenerate, onRainConvert, onRepl
                           <span className="text-xs text-[#929292]">{spot.duration}</span>
                         </div>
                         <p className="font-bold text-[#222222] leading-snug">{spot.place}</p>
-                        <p className="text-sm text-[#6a6a6a] mt-1.5 leading-relaxed">{spot.description}</p>
+                        <p className="text-sm text-[#6a6a6a] mt-1.5 leading-relaxed line-clamp-2">{spot.description}</p>
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <div className="text-sm font-bold text-[#ff385c] whitespace-nowrap">
                           ¥{spot.estimated_cost.toLocaleString()}
                         </div>
+                        <ChevronRight className="w-4 h-4 text-[#c1c1c1]" />
                         {onReplaceSpot && (
                           <button
-                            onClick={() => onReplaceSpot(index)}
+                            onClick={e => { e.stopPropagation(); onReplaceSpot(index) }}
                             disabled={replacingIndex !== null && replacingIndex !== undefined}
                             className="text-xs text-[#6a6a6a] hover:text-[#222222] border border-[#c1c1c1]/40 hover:border-[#c1c1c1] rounded-[6px] px-2 py-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                           >
@@ -195,6 +348,11 @@ export function PlanTimeline({ plan, onSave, onRegenerate, onRainConvert, onRepl
           </Button>
         )}
       </div>
+
+      {/* スポット詳細シート */}
+      {selectedSpot && (
+        <SpotDetailSheet spot={selectedSpot} onClose={() => setSelectedSpot(null)} />
+      )}
     </div>
   )
 }

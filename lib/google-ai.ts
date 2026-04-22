@@ -9,4 +9,4 @@ export function getGoogleAI(): GoogleGenerativeAI {
   return _googleAI
 }
 
-export const GEMMA_MODEL = process.env.GOOGLE_AI_MODEL ?? 'gemma-3-27b-it'
+export const GEMMA_MODEL = process.env.GOOGLE_AI_MODEL ?? 'gemini-2.0-flash-lite'
